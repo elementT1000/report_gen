@@ -20,6 +20,8 @@ app = dash.Dash(__name__,
     ],
 ) # https://bootswatch.com/lux/
 
+server = app.server
+
 df = pd.DataFrame({
     "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
     "Amount": [4, 1, 2, 2, 4, 5],
@@ -69,4 +71,4 @@ app.clientside_callback(
 )
 
 if __name__ == '__main__':
-    app.run_server(port='8050',debug=True)
+    app.run_server(debug=True, use_reloader=False)
