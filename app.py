@@ -11,6 +11,11 @@ import dash_bootstrap_components as dbc
 
 from dash.dependencies import Input, Output, State
 
+import numpy as np
+import statsmodels.api as sm
+from sklearn.preprocessing import PolynomialFeatures
+from statsmodels.sandbox.regression.predstd import wls_prediction_std
+
 
 app = dash.Dash(__name__,
     external_stylesheets=[dbc.themes.LUX],
@@ -21,135 +26,6 @@ app = dash.Dash(__name__,
 ) # https://bootswatch.com/lux/
 #server = app.server
 
-df = pd.DataFrame({
-    "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
-    "Amount": [4, 1, 2, 2, 4, 5],
-    "City": ["SF", "SF", "SF", "Montreal", "Montreal", "Montreal"]
-})
-
-fig = px.bar(df, x="Fruit", y="Amount", color="City", barmode="group")
-
-#################################################################################
-'''controls = [
-    dbc.Select(
-        id="scene",
-        options=[{"label": "video"}],
-        style={"maxWidth": "500px"}
-    )
-]
-
-video_card = dbc.Card(
-    [
-        html.Div(
-            id='video display',
-            children=[
-                dbc.CardBody(
-                    dash_player.DashPlayer(
-                        # width indicates the percentage of the card taken
-                        id="video", width="100%", height="auto", controls=True
-                    )
-
-                )
-            ]
-        )
-    ],
-    color=colors['background'],
-    style={"maxWidth": "1280px"},
-    outline=True
-)
-
-video_options = dbc.Card(
-    [
-        html.Div(
-            [
-                html.H3('Video Upload'),
-                html.Hr(),
-                dcc.Store(id='video_name_store'),
-                du.Upload(
-                    id='upload-video', max_file_size=4000  # 4000MB
-                ),
-                dbc.Label("Set AI Settings:", style={'fontSize': '24px', 'textAlign': 'center'}),
-                # We probably need a dropdown for walking or running as well
-                dcc.Dropdown(
-                    id="plane-setting",
-                    options=['Sagittal Plane', 'Frontal Plane'],
-                    value='Sagittal Plane',
-                    clearable=False,
-                    style={
-                        'color': 'black',
-                    }
-                ),
-                dcc.Checklist(
-                    id="checklist",
-                    options=[
-                        {"label": "Find Angles", "value": "FA"},
-                        {"label": "Find Phase", "value": "FP"}
-                    ],
-                    value=[],
-                    inline=False,
-                    inputStyle={"margin-right": "20px", "margin-left": "10px"},
-                    style={
-                        "fontSize": "18px",
-                        'color': colors['text'],
-
-                    }
-
-                ),
-                dbc.ButtonGroup(
-                    [
-                        dbc.Button("process-button", outline=True, color='warning', disabled=True),
-                        dbc.Button("download-button", outline=True, color='warning', disabled=True)
-                    ],
-                    class_name="d-flex justify-content-center"
-                )
-            ],
-
-        )
-    ],
-    # This pushes the words out of the box when the screen is small
-    # body=True
-)
-
-
-app.layout = dbc.Container(
-    id="app-container",
-    style={'backgroundColor': colors['background']},
-    children=[
-        # Banner Display
-        html.Div(
-            className="header",
-            children=[
-                html.H2("T4 Movement Analyses", id="title", style={'textAlign': 'left', 'color': colors['text']}),
-                html.Hr(),
-            ],
-        ),
-        # row 1
-        dbc.Row(
-            [
-                dbc.Col(video_card, width=9),
-                dbc.Col(video_options, width=3)
-            ],
-            align="start",
-        ),
-        # row 2
-        dbc.Row(
-            [
-                dbc.Col(dcc.Graph(id='graph'), width=9),
-                dbc.Col(graph_options, width=3, style={'height': '100%'})
-            ],
-            align="start"
-        ),
-        # extra row
-        dbc.Row(
-            [
-                dbc.Col(dbc.Card(dbc.Row([dbc.Col(c) for c in controls]), body=True), width=3)
-            ]
-        )
-    ],
-    fluid=True
-)
-'''
-#################################################################################
 HEADER = [
     html.H1('Movement Report'), 
     html.H3('A web application for building a movement analysis report.'), 
@@ -161,12 +37,21 @@ graph_options = dbc.Card(
             [
                 html.H3("Options", style={"color": "#ffffff"}),
                 html.Hr(),
+                dbc.Label("Body Plane:", style={"color": "#ffffff"}),
+                dcc.Dropdown(
+                    id='plane-radio',
+                    options=
+                    ['Anterior Frontal', 'Sagittal Right', 'Sagittal Left', 'Posterior Frontal'],
+                    value='Sagittal Right',
+                    clearable=False,
+                    style={'color': 'black'}
+                ),
                 dbc.Label("Joint Selection:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='joint-radio',
                     options=
-                    ['All', 'Near Hip Angle', 'Near Knee Flexion', 'Near Ankle Angle'],
-                    value='Near Hip Angle',
+                    ['RightArm', 'RightHip', 'RightKnee', 'RightAnkle', 'RightToe'],
+                    value='RightKnee',
                     clearable=False,
                     style={'color': 'black'}
                 ),
@@ -174,8 +59,8 @@ graph_options = dbc.Card(
                 dcc.Dropdown(
                     id='phase-highlight',
                     options=
-                    ['None', 'Initial Strike', 'Loading Response', 'Midstance',
-                     'Terminal Stance', 'Initial Swing', 'Midswing', 'Terminal Swing'],
+                    ['None', 'Initial Strike', 'Loading Response', 'Midstance', 'Terminal Stance', 'Toe Off', 
+                    'Initial Swing', 'Midswing', 'Terminal Swing'],
                     value='None',
                     clearable=False,
                     style={'color': 'primary'}
@@ -201,7 +86,7 @@ app.layout = html.Div(
                     #Here, I need to add in the columns if I want them to be printed
                     [  #May need a card group here if I want to control the height
                         dbc.Col(graph_options, width=3, style={'height': '100%'}),
-                        dbc.Col(dcc.Graph(id='example-graph',figure=fig), width=8)
+                        dbc.Col(dcc.Graph(id='graph'), width=8)
                     ],
                     align="start"
                 ),
@@ -222,6 +107,130 @@ app.layout = html.Div(
         ),
     ]
 )
+
+#Constants for graph function
+################
+csv_name = "Dataset_1_Ethan_01062023.csv"
+#joint = 'RightKnee'
+pln = "Sagittal Plane Right"
+system = "RL - RunLab"
+################
+df = pd.read_csv(csv_name, index_col=0, header=[0,1])
+
+@app.callback(
+    Output(component_id='graph', component_property='figure'),
+    Input(component_id='joint-radio', component_property='value'),
+)
+def update_fig(joint_radio):
+    joint = joint_radio
+    #Import the dataframe and slice it into gait cycles
+    def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: str):
+        #local scope
+        dff = angle_dataframe
+        mask = dff.loc[:, ('Phase', leg_and_system)] == 'Initial Strike'
+
+        #Drop the other planes (dff_plane)
+        dff_p = dff.loc[:, dff.columns[dff.columns.get_level_values(0).isin([plane, 'Phase'])]]
+
+        #Drop the other phase classifications (dff_classified)
+        dff_c = dff_p.loc[
+            :, dff_p.columns[
+                ~dff_p.columns.get_level_values(0).isin(['Phase']) #keep all of the headers that aren't Phase
+                ]
+            ].join(dff_p[('Phase',leg_and_system)])#Select the proper label system only and add that back to the filtered dff
+
+        cum_sum = mask.cumsum() #Create a boolean mask --also-- LOL
+
+        gait_cycle_list = [g for _, g in dff_c.groupby(cum_sum)]
+
+        return gait_cycle_list
+
+    gcl = slice_df_gait_cycles(df, pln, system)
+
+    #Add the "Percent to Completion" column to each DataFrame to 
+    # accomodate varied number of rows over the same cycle
+    def reindex_to_percent_complete(df_list: list):
+        df_list = [df.reset_index(drop=True) for df in df_list]
+        df_list = [df.assign(pct_complete = lambda x: x.index / len(x)) for df in df_list]
+        
+        #Concatenate the df's and set the pct_complete as index in order 
+        # to align the data along the cycle
+        df_concat = pd.concat(df_list)
+        df_concat.sort_values(by='pct_complete', inplace=True)
+        df_concat.set_index('pct_complete', inplace=True)
+        df_concat.index.rename(None, inplace=True)
+
+        return df_concat
+
+    f_df = reindex_to_percent_complete(gcl)
+
+    #Trace of all datapoints
+    trace = go.Scatter(
+        name="Right Knee Data", 
+        x=f_df.index, 
+        y=f_df.loc[:, (pln, joint)], 
+        mode='lines+markers')
+
+    '''
+    #Polynomial regression in order to model the general waveform of the data
+    #Fit a 2nd degree polynomial to the data (https://ostwalprasad.github.io/machine-learning/Polynomial-Regression-using-statsmodel.html)
+    '''
+    x = f_df.index.to_numpy()[:,np.newaxis] #Create a numpy array and add a new axis
+    index = x.ravel().argsort() #Sort and reindex the array
+    x = x[index].reshape(-1,1) #Reshape the array. -1 infers the first dimension of the new array based on the size of the original array
+
+    y = f_df.loc[:, (pln, joint)].to_numpy()[:,np.newaxis]
+    y = y[index]#Sort y according to x sorted index
+    y = y.reshape(-1, 1) #(n,1)
+
+    #Generate polynomial and interaction features in a matrix
+    polynomial_features= PolynomialFeatures(degree=5)
+    #Fit to data, the transform it
+    xp = polynomial_features.fit_transform(x)
+    #print(xp.shape)
+
+    '''
+    Use ordinary least squares for regression
+    Polynomial regression for n degrees. y=b0 + b1x + b2x^2 ...+ bnx^n
+    '''
+    model = sm.OLS(y, xp).fit()
+    #run the regression
+    ypred = model.predict(xp)  #(n,) a flattened array
+    _, upper, lower = wls_prediction_std(model) # Calculate the confidence intervals
+
+    # Create scatter coordinates for best fit line
+    best_fit = go.Scatter(
+        name='Trend', 
+        x=f_df.index, 
+        y=ypred, 
+        mode='lines',
+        line=dict(color='blue', width=2)
+    )
+    #Set up the confidence intervals
+    upper_ci = go.Scatter(
+        name='Upper Confidence', 
+        x=f_df.index, 
+        y=upper, 
+        mode='lines', 
+        line=dict(color='red', width=1)
+    )
+    lower_ci = go.Scatter(
+        name='Lower Confidence', 
+        x=f_df.index, 
+        y=lower, 
+        mode='lines', 
+        line=dict(color='red', width=1)
+    )
+
+    # Display the graph
+    fig = go.Figure(data=[trace, best_fit, upper_ci, lower_ci])
+    fig.update_layout(
+        title="Polynomial Fit of Right Knee w CI", 
+        xaxis_title='Percent to Completion', 
+        yaxis_title='Angle')
+    #fig.show()
+
+    return fig
 
 app.clientside_callback(
     """
@@ -246,3 +255,4 @@ app.clientside_callback(
 
 if __name__ == '__main__':
     app.run_server(debug=True, use_reloader=True)
+
