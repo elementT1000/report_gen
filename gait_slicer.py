@@ -26,6 +26,7 @@ def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: st
 
     return gait_cycle_list
 
+#group cycle list
 gcl = slice_df_gait_cycles(df, "Sagittal Plane Right", "RL - RunLab")
 
 '''for index, cycle in enumerate(gcl):

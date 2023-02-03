@@ -11,8 +11,8 @@ system = "RL - RunLab"
 ################
 df = pd.read_csv(csv_name, index_col=0, header=[0,1])
 
-#Import the dataframe and slice it into gait cycles
-def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: str):
+#Import the dataframe and slice it into groups by phase
+def slice_df_into_phases(angle_dataframe: object, plane: str, leg_and_system: str):
     #local scope
     dff = angle_dataframe
 
@@ -32,14 +32,10 @@ def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: st
 
     return group_list
 
-gl = slice_df_gait_cycles(df, pln, system)
-
 #Create a new dataframe containing mean, max, and min
 def calculate_mean_min_max(df_list: list):
-    #df_list = [df.reset_index(drop=True) for df in df_list]
     results_list = []
 
-    #phases = df_list[0]["Phase"].unique()
     # Iterate through the list of DataFrames
     for i, df in enumerate(df_list):
         phase = df['Phase']
@@ -47,38 +43,43 @@ def calculate_mean_min_max(df_list: list):
         df.columns = df.columns.get_level_values(1)
 
         # Calculate the mean, min, and max for each column
-        mean_df = df.mean().round(2)
-        min_val = df.min().round(2)
-        max_val = df.max().round(2)
+        mean_df = df.mean().round(2).astype(str)
+        min_val = df.min().round(2).astype(str)
+        max_val = df.max().round(2).astype(str)
         
         # Concatenate dataframes and rename columns
         phase_header = str(phase.iloc[1,0])
-        #print(phase_header)
+        
         result = pd.concat([mean_df, min_val, max_val], axis=1)
         level_1 = ['mean','min','max']
         result.columns = level_1
+
+        #combine the values into a single column 
+        combine_values = lambda x, y, z: '{0} ({1}/{2})'.format(x, y, z)
+        result['Mean (Max/Min)'] = result.apply(lambda row: combine_values(row['mean'], row['min'], row['max']), axis=1)
+        result.drop(columns=['mean', 'min', 'max'], inplace=True)
+
         result = pd.concat([result], keys=[phase_header], axis=1)
-        #print(result)
-        #print(result)
+        
         # Append the result to the list
         results_list.append(result)
 
 # Concatenate the results into a single DataFrame
     result_df = pd.concat(results_list, names=[result], axis=1)
-    #print(result_df.head())
     return result_df
 
-f_df = calculate_mean_min_max(gl)
+
+#group list
+gl = slice_df_into_phases(df, pln, system)
+#calculated dataframe
+c_df = calculate_mean_min_max(gl)
+print(c_df)
+
 
 app = Dash(__name__)
 
 def datatable_settings_multiindex(df, flatten_char = '_'):
-    ''' Plotly dash datatables do not natively handle multiindex dataframes. This function takes a multiindex column set
-    and generates a flattend column name list for the dataframe, while also structuring the table dictionary to represent the
-    columns in their original multi-level format.  
     
-    Function returns the variables datatable_col_list, datatable_data for the columns and data parameters of 
-    the dash_table.DataTable'''
     datatable_col_list = []
         
     levels = df.columns.nlevels
@@ -97,7 +98,12 @@ def datatable_settings_multiindex(df, flatten_char = '_'):
     
     return datatable_col_list, datatable_data
 
-columns, data = datatable_settings_multiindex(f_df)
+columns, data = datatable_settings_multiindex(c_df)
+#print(columns)
+'''value = data[0]
+print(type(value))
+print(value)'''
+
 
 app.layout = dash_table.DataTable(
     id='table',
