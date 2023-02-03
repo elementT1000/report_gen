@@ -1,5 +1,7 @@
 import pandas as pd
 from dash import Dash, dash_table
+from dash import dcc, html
+import dash_bootstrap_components as dbc
 
 
 #Constants
@@ -56,16 +58,17 @@ def calculate_mean_min_max(df_list: list):
 
         #combine the values into a single column 
         combine_values = lambda x, y, z: '{0} ({1}/{2})'.format(x, y, z)
-        result['Mean (Max/Min)'] = result.apply(lambda row: combine_values(row['mean'], row['min'], row['max']), axis=1)
+        #result[Mean (Max/Min)]
+        result[phase_header] = result.apply(lambda row: combine_values(row['mean'], row['min'], row['max']), axis=1)
         result.drop(columns=['mean', 'min', 'max'], inplace=True)
 
-        result = pd.concat([result], keys=[phase_header], axis=1)
+        result = pd.concat([result], axis=1) #keys=[phase_header],
         
         # Append the result to the list
         results_list.append(result)
 
 # Concatenate the results into a single DataFrame
-    result_df = pd.concat(results_list, names=[result], axis=1)
+    result_df = pd.concat(results_list, names=[result], axis=1) #keys=[phase_header]
     return result_df
 
 
@@ -73,43 +76,74 @@ def calculate_mean_min_max(df_list: list):
 gl = slice_df_into_phases(df, pln, system)
 #calculated dataframe
 c_df = calculate_mean_min_max(gl)
-print(c_df)
+c_df.insert(0, 'Joint Vertex', c_df.index, True)
+c_df = c_df.reset_index(drop=True)
+#print(c_df)
 
 
 app = Dash(__name__)
 
-def datatable_settings_multiindex(df, flatten_char = '_'):
-    
+def gait_section_slicer(fc_df, stance=1):
+    stance_section = ['Joint Vertex', 'Initial Strike', 'Loading Response', 'Midstance', 'Terminal Stance', 'Toe Off']
+    swing_section = ['Joint Vertex', 'Initial Swing', 'Midswing', 'Terminal Swing']
+
+    if stance:
+        fc_df = fc_df[stance_section].reindex(columns=stance_section)
+    else:
+        fc_df = fc_df[swing_section].reindex(columns=swing_section)
+
+    return fc_df
+
+def datatable_settings_multiindex(mi_df, flatten_char = '_'):
+
     datatable_col_list = []
-        
-    levels = df.columns.nlevels
+    
+    levels = mi_df.columns.nlevels
     if levels == 1:
-        for i in df.columns:
+        for i in mi_df.columns:
             datatable_col_list.append({"name": i, "id": i})
     else:        
         columns_list = []
-        for i in df.columns:
+        for i in mi_df.columns:
             col_id = flatten_char.join(i)
             datatable_col_list.append({"name": i, "id": col_id})
             columns_list.append(col_id)
-        df.columns = columns_list
+        mi_df.columns = columns_list
 
-    datatable_data = df.to_dict('records')
+    datatable_data = mi_df.to_dict('records')
     
     return datatable_col_list, datatable_data
 
-columns, data = datatable_settings_multiindex(c_df)
-#print(columns)
-'''value = data[0]
-print(type(value))
-print(value)'''
+stance_df = gait_section_slicer(c_df, stance=1)
+stance_columns, stance_data = datatable_settings_multiindex(stance_df)
 
+swing_df = gait_section_slicer(c_df, stance=0)
+swing_columns, swing_data = datatable_settings_multiindex(swing_df)
 
-app.layout = dash_table.DataTable(
-    id='table',
-    data=data, 
-    columns=columns
-)
+app.layout = dbc.Container([
+    html.H3("Stance: Mean (Minimum/Maximum) for Each Joint"),
+    html.Hr(),
+    dash_table.DataTable(
+        id='stance_table',
+        style_data={
+            'whiteSpace': 'normal',
+            'height': 'auto', #Adds wrapping to cells
+        },
+        data=stance_data,      
+        columns=stance_columns
+    ), 
+    html.H3("Swing: Mean (Minimum/Maximum) for Each Joint"),
+    html.Hr(),
+    dash_table.DataTable(
+        id='swing_table',
+        style_data={
+            'whiteSpace': 'normal',
+            'height': 'auto', #Adds wrapping to cells
+        },
+        data=swing_data,      
+        columns=swing_columns
+    ), 
+])
 
 if __name__ == '__main__':
     app.run_server(debug=True)

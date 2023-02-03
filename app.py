@@ -17,6 +17,126 @@ import statsmodels.api as sm
 from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.sandbox.regression.predstd import wls_prediction_std
 
+from gait_slicer import *
+
+
+####################################
+#Temp Table Info
+####################################
+#Constants for graph function
+################
+csv_name = "Dataset_1_Ethan_01062023.csv"
+#joint = 'RightKnee'
+pln = "Sagittal Plane Right"
+system = "RL - RunLab"
+################
+
+def slice_df_into_phases(angle_dataframe: object, plane: str, leg_and_system: str):
+    #local scope
+    dff = angle_dataframe
+
+    #Drop the other planes (dff_plane)
+    dff_p = dff.loc[:, dff.columns[dff.columns.get_level_values(0).isin([plane, 'Phase'])]]
+
+    #Drop the other phase classifications (dff_classified)
+    dff_c = dff_p.loc[
+        :, dff_p.columns[
+            ~dff_p.columns.get_level_values(0).isin(['Phase']) #keep all of the headers that aren't Phase
+            ]
+        ].join(dff_p[('Phase',leg_and_system)])#Select the proper label system only and add that back to the filtered dff
+
+    #groups = df.groupby(('Phase','RL - RunLab'))
+
+    group_list = [g for _, g in dff_c.groupby(('Phase','RL - RunLab'))]
+
+    return group_list
+
+#Create a new dataframe containing mean, max, and min
+def calculate_mean_min_max(df_list: list):
+    results_list = []
+
+    # Iterate through the list of DataFrames
+    for i, df in enumerate(df_list):
+        phase = df['Phase']
+        df = df.drop(columns=['Phase'], level=0)
+        df.columns = df.columns.get_level_values(1)
+
+        # Calculate the mean, min, and max for each column
+        mean_df = df.mean().round(2).astype(str)
+        min_val = df.min().round(2).astype(str)
+        max_val = df.max().round(2).astype(str)
+        
+        # Concatenate dataframes and rename columns
+        phase_header = str(phase.iloc[1,0])
+        
+        result = pd.concat([mean_df, min_val, max_val], axis=1)
+        level_1 = ['mean','min','max']
+        result.columns = level_1
+
+        #combine the values into a single column 
+        combine_values = lambda x, y, z: '{0} ({1}/{2})'.format(x, y, z)
+        #result[Mean (Max/Min)]
+        result[phase_header] = result.apply(lambda row: combine_values(row['mean'], row['min'], row['max']), axis=1)
+        result.drop(columns=['mean', 'min', 'max'], inplace=True)
+
+        result = pd.concat([result], axis=1) #keys=[phase_header],
+        
+        # Append the result to the list
+        results_list.append(result)
+
+# Concatenate the results into a single DataFrame
+    result_df = pd.concat(results_list, names=[result], axis=1) #keys=[phase_header]
+    return result_df
+
+def gait_section_slicer(fc_df, stance=1):
+    stance_section = ['Joint Vertex', 'Initial Strike', 'Loading Response', 'Midstance', 'Terminal Stance', 'Toe Off']
+    swing_section = ['Joint Vertex', 'Initial Swing', 'Midswing', 'Terminal Swing']
+
+    if stance:
+        fc_df = fc_df[stance_section].reindex(columns=stance_section)
+    else:
+        fc_df = fc_df[swing_section].reindex(columns=swing_section)
+
+    return fc_df
+
+def datatable_settings_multiindex(df, flatten_char = '_'):
+    ''' Plotly dash datatables do not natively handle multiindex dataframes. This function takes a multiindex column set
+    and generates a flattend column name list for the dataframe, while also structuring the table dictionary to represent the
+    columns in their original multi-level format.  
+    
+    Function returns the variables datatable_col_list, datatable_data for the columns and data parameters of 
+    the dash_table.DataTable'''
+    datatable_col_list = []
+        
+    levels = df.columns.nlevels
+    if levels == 1:
+        for i in df.columns:
+            datatable_col_list.append({"name": i, "id": i})
+    else:        
+        columns_list = []
+        for i in df.columns:
+            col_id = flatten_char.join(i)
+            datatable_col_list.append({"name": i, "id": col_id})
+            columns_list.append(col_id)
+        df.columns = columns_list
+
+    datatable_data = df.to_dict('records')
+    
+    return datatable_col_list, datatable_data
+
+df = pd.read_csv(csv_name, index_col=0, header=[0,1])
+#group list
+gl = slice_df_into_phases(df, pln, system)
+#calculated dataframe
+c_df = calculate_mean_min_max(gl)
+c_df.insert(0, 'Joint Vertex', c_df.index, True)
+c_df = c_df.reset_index(drop=True)
+
+stance_df = gait_section_slicer(c_df, stance=1)
+stance_columns, stance_data = datatable_settings_multiindex(stance_df)
+
+swing_df = gait_section_slicer(c_df, stance=0)
+swing_columns, swing_data = datatable_settings_multiindex(swing_df)
 
 app = dash.Dash(__name__,
     external_stylesheets=[dbc.themes.LUX],
@@ -74,101 +194,29 @@ graph_options = dbc.Card(
     body=True
 )
 
-####################################
-#Temp Table Info
-####################################
-def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: str):
-    #local scope
-    dff = angle_dataframe
-
-    #Drop the other planes (dff_plane)
-    dff_p = dff.loc[:, dff.columns[dff.columns.get_level_values(0).isin([plane, 'Phase'])]]
-
-    #Drop the other phase classifications (dff_classified)
-    dff_c = dff_p.loc[
-        :, dff_p.columns[
-            ~dff_p.columns.get_level_values(0).isin(['Phase']) #keep all of the headers that aren't Phase
-            ]
-        ].join(dff_p[('Phase',leg_and_system)])#Select the proper label system only and add that back to the filtered dff
-
-    #groups = df.groupby(('Phase','RL - RunLab'))
-
-    group_list = [g for _, g in dff_c.groupby(('Phase','RL - RunLab'))]
-
-    return group_list
-
-#Constants for graph function
-################
-csv_name = "Dataset_1_Ethan_01062023.csv"
-#joint = 'RightKnee'
-pln = "Sagittal Plane Right"
-system = "RL - RunLab"
-################
-df = pd.read_csv(csv_name, index_col=0, header=[0,1])
-gl = slice_df_gait_cycles(df, pln, system)
-
-#Create a new dataframe containing mean, max, and min
-def calculate_mean_min_max(df_list: list):
-    #df_list = [df.reset_index(drop=True) for df in df_list]
-    results_list = []
-
-    #phases = df_list[0]["Phase"].unique()
-    # Iterate through the list of DataFrames
-    for i, df in enumerate(df_list):
-        phase = df['Phase']
-        df = df.drop(columns=['Phase'], level=0)
-        df.columns = df.columns.get_level_values(1)
-
-        # Calculate the mean, min, and max for each column
-        mean_df = df.mean().round(2)
-        min_val = df.min().round(2)
-        max_val = df.max().round(2)
-        
-        # Concatenate dataframes and rename columns
-        phase_header = str(phase.iloc[1,0])
-        #print(phase_header)
-        result = pd.concat([mean_df, min_val, max_val], axis=1)
-        level_1 = ['mean','min','max']
-        result.columns = level_1
-        result = pd.concat([result], keys=[phase_header], axis=1)
-        #print(result)
-        #print(result)
-        # Append the result to the list
-        results_list.append(result)
-
-# Concatenate the results into a single DataFrame
-    result_df = pd.concat(results_list, names=[result], axis=1)
-    #print(result_df.head())
-    return result_df
-
-f_df = calculate_mean_min_max(gl)
-
-def datatable_settings_multiindex(df, flatten_char = '_'):
-    ''' Plotly dash datatables do not natively handle multiindex dataframes. This function takes a multiindex column set
-    and generates a flattend column name list for the dataframe, while also structuring the table dictionary to represent the
-    columns in their original multi-level format.  
-    
-    Function returns the variables datatable_col_list, datatable_data for the columns and data parameters of 
-    the dash_table.DataTable'''
-    datatable_col_list = []
-        
-    levels = df.columns.nlevels
-    if levels == 1:
-        for i in df.columns:
-            datatable_col_list.append({"name": i, "id": i})
-    else:        
-        columns_list = []
-        for i in df.columns:
-            col_id = flatten_char.join(i)
-            datatable_col_list.append({"name": i, "id": col_id})
-            columns_list.append(col_id)
-        df.columns = columns_list
-
-    datatable_data = df.to_dict('records')
-    
-    return datatable_col_list, datatable_data
-
-columns, data = datatable_settings_multiindex(f_df)
+TABLES = dbc.Container([
+    html.Hr(),
+    html.H3("Stance: Mean (Minimum/Maximum) for Each Joint"),
+    dash_table.DataTable(
+        id='stance_table',
+        style_data={
+            'whiteSpace': 'normal',
+            'height': 'auto', #Adds wrapping to cells
+        },
+        data=stance_data,      
+        columns=stance_columns
+    ), 
+    html.H3("Swing: Mean (Minimum/Maximum) for Each Joint"),
+    dash_table.DataTable(
+        id='swing_table',
+        style_data={
+            'whiteSpace': 'normal',
+            'height': 'auto', #Adds wrapping to cells
+        },
+        data=swing_data,      
+        columns=swing_columns
+    ), 
+])
 
 #Limit the width of the elements in this page to the standard size of a A4 page
 app.layout = html.Div(
@@ -182,22 +230,23 @@ app.layout = html.Div(
                 dbc.Row(
                     #Here, I need to add in the columns if I want them to be printed
                     [  #May need a card group here if I want to control the height
-                        dbc.Col(graph_options, width=3, style={'height': '100%'}),
+                        dbc.Col(graph_options, width=2, style={'height': '100%'}),
                         dbc.Col([
-                            dcc.Graph(id='graph'), 
-                            dash_table.DataTable(
-                                id='table',
-                                data=data, 
-                                columns=columns
-                            ),
-                            
-                        ], width=8)
+                            dcc.Graph(id='graph'),  
+                        ], width=9)
                     ],
                     align="start"
                 ),
+                dbc.Row(
+                    [
+                        TABLES
+                    ],
+                    align="start"
+
+                )
             ], 
             id='print', 
-            style={"maxWidth": "900px"} #For A4 style .pdf files, 900px seems to be the max
+            style={"maxWidth": "1150px"} #For A4 style .pdf files, 900px seems to be the max
         ),
         dbc.Container(
             [
@@ -219,50 +268,14 @@ app.layout = html.Div(
 )
 def update_fig(joint_radio):
     joint = joint_radio
-    #Import the dataframe and slice it into gait cycles
-    def slice_df_gait_cycles(angle_dataframe: object, plane: str, leg_and_system: str):
-        #local scope
-        dff = angle_dataframe
-        mask = dff.loc[:, ('Phase', leg_and_system)] == 'Initial Strike'
-
-        #Drop the other planes (dff_plane)
-        dff_p = dff.loc[:, dff.columns[dff.columns.get_level_values(0).isin([plane, 'Phase'])]]
-
-        #Drop the other phase classifications (dff_classified)
-        dff_c = dff_p.loc[
-            :, dff_p.columns[
-                ~dff_p.columns.get_level_values(0).isin(['Phase']) #keep all of the headers that aren't Phase
-                ]
-            ].join(dff_p[('Phase',leg_and_system)])#Select the proper label system only and add that back to the filtered dff
-
-        cum_sum = mask.cumsum() #Create a boolean mask --also-- LOL
-
-        gait_cycle_list = [g for _, g in dff_c.groupby(cum_sum)]
-
-        return gait_cycle_list
-
+    
     gcl = slice_df_gait_cycles(df, pln, system)
-
-    #Add the "Percent to Completion" column to each DataFrame to 
-    # accomodate varied number of rows over the same cycle
-    def reindex_to_percent_complete(df_list: list):
-        df_list = [df.reset_index(drop=True) for df in df_list]
-        df_list = [df.assign(pct_complete = lambda x: x.index / len(x)) for df in df_list]
-        
-        #Concatenate the df's and set the pct_complete as index in order 
-        # to align the data along the cycle
-        df_concat = pd.concat(df_list)
-        df_concat.sort_values(by='pct_complete', inplace=True)
-        df_concat.set_index('pct_complete', inplace=True)
-        df_concat.index.rename(None, inplace=True)
-
-        return df_concat
 
     f_df = reindex_to_percent_complete(gcl)
 
     #Trace of all datapoints
     trace = go.Scatter(
-        name="Right Knee Data", 
+        name="Data", 
         x=f_df.index, 
         y=f_df.loc[:, (pln, joint)], 
         mode='lines+markers')
@@ -321,7 +334,7 @@ def update_fig(joint_radio):
     # Display the graph
     fig = go.Figure(data=[trace, best_fit, upper_ci, lower_ci])
     fig.update_layout(
-        title="Polynomial Fit of Right Knee w CI", 
+        title="Normal Gait Cycle and Deviation", 
         xaxis_title='Percent to Completion', 
         yaxis_title='Angle')
     #fig.show()
