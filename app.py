@@ -18,6 +18,8 @@ from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.sandbox.regression.predstd import wls_prediction_std
 
 from gait_slicer import *
+from table_maker import *
+from normalized_gait import highlight_phase_median
 
 
 ####################################
@@ -26,118 +28,13 @@ from gait_slicer import *
 #Constants for graph function
 ################
 csv_name = "Dataset_1_Ethan_01062023.csv"
-#joint = 'RightKnee'
 pln = "Sagittal Plane Right"
 system = "RL - RunLab"
 ################
 
-def slice_df_into_phases(angle_dataframe: object, plane: str, leg_and_system: str):
-    #local scope
-    dff = angle_dataframe
-
-    #Drop the other planes (dff_plane)
-    dff_p = dff.loc[:, dff.columns[dff.columns.get_level_values(0).isin([plane, 'Phase'])]]
-
-    #Drop the other phase classifications (dff_classified)
-    dff_c = dff_p.loc[
-        :, dff_p.columns[
-            ~dff_p.columns.get_level_values(0).isin(['Phase']) #keep all of the headers that aren't Phase
-            ]
-        ].join(dff_p[('Phase',leg_and_system)])#Select the proper label system only and add that back to the filtered dff
-
-    #groups = df.groupby(('Phase','RL - RunLab'))
-
-    group_list = [g for _, g in dff_c.groupby(('Phase','RL - RunLab'))]
-
-    return group_list
-
-#Create a new dataframe containing mean, max, and min
-def calculate_mean_min_max(df_list: list):
-    results_list = []
-
-    # Iterate through the list of DataFrames
-    for i, df in enumerate(df_list):
-        phase = df['Phase']
-        df = df.drop(columns=['Phase'], level=0)
-        df.columns = df.columns.get_level_values(1)
-
-        # Calculate the mean, min, and max for each column
-        mean_df = df.mean().round(2).astype(str)
-        min_val = df.min().round(2).astype(str)
-        max_val = df.max().round(2).astype(str)
-        
-        # Concatenate dataframes and rename columns
-        phase_header = str(phase.iloc[1,0])
-        
-        result = pd.concat([mean_df, min_val, max_val], axis=1)
-        level_1 = ['mean','min','max']
-        result.columns = level_1
-
-        #combine the values into a single column 
-        combine_values = lambda x, y, z: '{0} ({1}/{2})'.format(x, y, z)
-        #result[Mean (Max/Min)]
-        result[phase_header] = result.apply(lambda row: combine_values(row['mean'], row['min'], row['max']), axis=1)
-        result.drop(columns=['mean', 'min', 'max'], inplace=True)
-
-        result = pd.concat([result], axis=1) #keys=[phase_header],
-        
-        # Append the result to the list
-        results_list.append(result)
-
-# Concatenate the results into a single DataFrame
-    result_df = pd.concat(results_list, names=[result], axis=1) #keys=[phase_header]
-    return result_df
-
-def gait_section_slicer(fc_df, stance=1):
-    stance_section = ['Joint Vertex', 'Initial Strike', 'Loading Response', 'Midstance', 'Terminal Stance', 'Toe Off']
-    swing_section = ['Joint Vertex', 'Initial Swing', 'Midswing', 'Terminal Swing']
-
-    if stance:
-        fc_df = fc_df[stance_section].reindex(columns=stance_section)
-    else:
-        fc_df = fc_df[swing_section].reindex(columns=swing_section)
-
-    return fc_df
-
-def datatable_settings_multiindex(df, flatten_char = '_'):
-    ''' Plotly dash datatables do not natively handle multiindex dataframes. This function takes a multiindex column set
-    and generates a flattend column name list for the dataframe, while also structuring the table dictionary to represent the
-    columns in their original multi-level format.  
-    
-    Function returns the variables datatable_col_list, datatable_data for the columns and data parameters of 
-    the dash_table.DataTable'''
-    datatable_col_list = []
-        
-    levels = df.columns.nlevels
-    if levels == 1:
-        for i in df.columns:
-            datatable_col_list.append({"name": i, "id": i})
-    else:        
-        columns_list = []
-        for i in df.columns:
-            col_id = flatten_char.join(i)
-            datatable_col_list.append({"name": i, "id": col_id})
-            columns_list.append(col_id)
-        df.columns = columns_list
-
-    datatable_data = df.to_dict('records')
-    
-    return datatable_col_list, datatable_data
-
 df = pd.read_csv(csv_name, index_col=0, header=[0,1])
-#group list
-gl = slice_df_into_phases(df, pln, system)
-#calculated dataframe
-c_df = calculate_mean_min_max(gl)
-c_df.insert(0, 'Joint Vertex', c_df.index, True)
-c_df = c_df.reset_index(drop=True)
 
-stance_df = gait_section_slicer(c_df, stance=1)
-stance_columns, stance_data = datatable_settings_multiindex(stance_df)
-
-swing_df = gait_section_slicer(c_df, stance=0)
-swing_columns, swing_data = datatable_settings_multiindex(swing_df)
-
+#Dash Application Starts
 app = dash.Dash(__name__,
     external_stylesheets=[dbc.themes.LUX],
     #scale viewport for mobile devices 
@@ -147,12 +44,13 @@ app = dash.Dash(__name__,
 ) # https://bootswatch.com/lux/
 #server = app.server
 
+#User Interface
 HEADER = [
     html.H1('Movement Report'), 
     html.H3('A web application for building a movement analysis report.'), 
     html.Hr()]
 
-graph_options = dbc.Card(
+OPTIONS = dbc.Card(
     [
         html.Div(
             [
@@ -194,6 +92,19 @@ graph_options = dbc.Card(
     body=True
 )
 
+#TABLE Operations
+#group list
+gl = slice_df_into_phases(df, pln, system)
+#calculated dataframe
+c_df = calculate_mean_min_max(gl)
+c_df.insert(0, 'Joint Vertex', c_df.index, True)
+c_df = c_df.reset_index(drop=True)
+
+stance_df = gait_section_slicer(c_df, stance=1)
+stance_columns, stance_data = datatable_settings_multiindex(stance_df)
+
+swing_df = gait_section_slicer(c_df, stance=0)
+swing_columns, swing_data = datatable_settings_multiindex(swing_df)
 TABLES = dbc.Container([
     html.Hr(),
     html.H3("Stance: Mean (Minimum/Maximum) for Each Joint"),
@@ -230,7 +141,7 @@ app.layout = html.Div(
                 dbc.Row(
                     #Here, I need to add in the columns if I want them to be printed
                     [  #May need a card group here if I want to control the height
-                        dbc.Col(graph_options, width=2, style={'height': '100%'}),
+                        dbc.Col(OPTIONS, width=2, style={'height': '100%'}),
                         dbc.Col([
                             dcc.Graph(id='graph'),  
                         ], width=9)
@@ -243,9 +154,16 @@ app.layout = html.Div(
                     ],
                     align="start"
 
-                )
+                ),
+                dbc.Row(
+                    dcc.Textarea(
+                        id='textarea',
+                        value='Add your notes here, Doc.',
+                        style={'width': '100%', 'height': 300},
+                    ),
+                ),
             ], 
-            id='print', 
+            
             style={"maxWidth": "1150px"} #For A4 style .pdf files, 900px seems to be the max
         ),
         dbc.Container(
@@ -259,19 +177,23 @@ app.layout = html.Div(
             ],
             style={"maxWidth": "130px"}
         ),
-    ]
+    ],
+    id='print', 
 )
 
+#Functionality
 @app.callback(
     Output(component_id='graph', component_property='figure'),
     Input(component_id='joint-radio', component_property='value'),
+    Input(component_id='phase-highlight', component_property='value'),
 )
-def update_fig(joint_radio):
+def update_fig(joint_radio, phase_highlight):
     joint = joint_radio
-    
+    phase = phase_highlight
+    #TODO: Most of the following belongs in a seperate function
     gcl = slice_df_gait_cycles(df, pln, system)
-
     f_df = reindex_to_percent_complete(gcl)
+    median = highlight_phase_median(f_df, key=phase)
 
     #Trace of all datapoints
     trace = go.Scatter(
@@ -296,7 +218,6 @@ def update_fig(joint_radio):
     polynomial_features= PolynomialFeatures(degree=5)
     #Fit to data, the transform it
     xp = polynomial_features.fit_transform(x)
-    #print(xp.shape)
 
     '''
     Use ordinary least squares for regression
@@ -337,6 +258,9 @@ def update_fig(joint_radio):
         title="Normal Gait Cycle and Deviation", 
         xaxis_title='Percent to Completion', 
         yaxis_title='Angle')
+    #Phase highlight line
+    for x in median:
+        fig.add_vline(x=x, line_width=2, line_dash="dash", line_color='red')
     #fig.show()
 
     return fig

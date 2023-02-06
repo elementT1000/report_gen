@@ -4,15 +4,6 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 
-#Constants
-################
-csv_name = "Dataset_1_Ethan_01062023.csv"
-joint = 'RightKnee'
-pln = "Sagittal Plane Right"
-system = "RL - RunLab"
-################
-df = pd.read_csv(csv_name, index_col=0, header=[0,1])
-
 #Import the dataframe and slice it into groups by phase
 def slice_df_into_phases(angle_dataframe: object, plane: str, leg_and_system: str):
     #local scope
@@ -45,9 +36,9 @@ def calculate_mean_min_max(df_list: list):
         df.columns = df.columns.get_level_values(1)
 
         # Calculate the mean, min, and max for each column
-        mean_df = df.mean().round(2).astype(str)
-        min_val = df.min().round(2).astype(str)
-        max_val = df.max().round(2).astype(str)
+        mean_df = df.mean().astype(int).astype(str)
+        min_val = df.min().astype(int).astype(str)
+        max_val = df.max().astype(int).astype(str)
         
         # Concatenate dataframes and rename columns
         phase_header = str(phase.iloc[1,0])
@@ -70,18 +61,6 @@ def calculate_mean_min_max(df_list: list):
 # Concatenate the results into a single DataFrame
     result_df = pd.concat(results_list, names=[result], axis=1) #keys=[phase_header]
     return result_df
-
-
-#group list
-gl = slice_df_into_phases(df, pln, system)
-#calculated dataframe
-c_df = calculate_mean_min_max(gl)
-c_df.insert(0, 'Joint Vertex', c_df.index, True)
-c_df = c_df.reset_index(drop=True)
-#print(c_df)
-
-
-app = Dash(__name__)
 
 def gait_section_slicer(fc_df, stance=1):
     stance_section = ['Joint Vertex', 'Initial Strike', 'Loading Response', 'Midstance', 'Terminal Stance', 'Toe Off']
@@ -114,13 +93,33 @@ def datatable_settings_multiindex(mi_df, flatten_char = '_'):
     
     return datatable_col_list, datatable_data
 
-stance_df = gait_section_slicer(c_df, stance=1)
-stance_columns, stance_data = datatable_settings_multiindex(stance_df)
+if __name__ == "__main__":
+    #Constants
+    ################
+    csv_name = "Dataset_1_Ethan_01062023.csv"
+    joint = 'RightKnee'
+    pln = "Sagittal Plane Right"
+    system = "RL - RunLab"
+    ################
+    df = pd.read_csv(csv_name, index_col=0, header=[0,1])
+    #group list
+    gl = slice_df_into_phases(df, pln, system)
+    #calculated dataframe
+    c_df = calculate_mean_min_max(gl)
+    c_df.insert(0, 'Joint Vertex', c_df.index, True)
+    c_df = c_df.reset_index(drop=True)
+    #print(c_df)
 
-swing_df = gait_section_slicer(c_df, stance=0)
-swing_columns, swing_data = datatable_settings_multiindex(swing_df)
 
-app.layout = dbc.Container([
+    app = Dash(__name__)
+
+    stance_df = gait_section_slicer(c_df, stance=1)
+    stance_columns, stance_data = datatable_settings_multiindex(stance_df)
+
+    swing_df = gait_section_slicer(c_df, stance=0)
+    swing_columns, swing_data = datatable_settings_multiindex(swing_df)
+
+    app.layout = dbc.Container([
     html.H3("Stance: Mean (Minimum/Maximum) for Each Joint"),
     html.Hr(),
     dash_table.DataTable(
@@ -145,5 +144,4 @@ app.layout = dbc.Container([
     ), 
 ])
 
-if __name__ == '__main__':
     app.run_server(debug=True)
