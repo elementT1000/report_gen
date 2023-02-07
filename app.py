@@ -42,7 +42,7 @@ app = dash.Dash(__name__,
         {"name": "viewport", "content": "width=device-width, initial-scale=1"},
     ],
 ) # https://bootswatch.com/lux/
-#server = app.server
+server = app.server
 
 #User Interface
 HEADER = [
@@ -323,5 +323,5 @@ app.clientside_callback(
 )'''
 
 if __name__ == '__main__':
-    app.run_server(debug=True, use_reloader=True)
+    app.run_server(debug=True)
 
