@@ -37,7 +37,7 @@ if __name__ == "__main__":
     #Constants
     ################
     csv_name = "Dataset_1_Ethan_01062023.csv"
-    joint = 'RightKnee'
+    joint = 'RightToe'
     pln = "Sagittal Plane Right"
     system = "RL - RunLab"
     ################
@@ -66,20 +66,24 @@ if __name__ == "__main__":
     y = f_df.loc[:, (pln, joint)].to_numpy()[:,np.newaxis]
     y = y[index]#Sort y according to x sorted index
     y = y.reshape(-1, 1) #(n,1)
+    ##Experimental
+    y = np.nan_to_num(y, 0)
 
     #Generate polynomial and interaction features in a matrix
     polynomial_features= PolynomialFeatures(degree=5)
     #Fit to data, the transform it
     xp = polynomial_features.fit_transform(x)
-    print(xp.shape)
+    print(xp)
 
     '''
     #Use ordinary least squares for regression
     #Polynomial regression for n degrees. y=b0 + b1x + b2x^2 ...+ bnx^n
     '''
+    #statsmodels.api.OLS(y, xp).fit().predict() returns all nan values if any nan values are present
     model = sm.OLS(y, xp).fit()
     #run the regression
     ypred = model.predict(xp)  #(n,) a flattened array
+    print(ypred)
     _, upper, lower = wls_prediction_std(model) # Calculate the confidence intervals
 
     # Create scatter coordinates for best fit line

@@ -28,7 +28,7 @@ from normalized_gait import highlight_phase_median
 #Constants for graph function
 ################
 csv_name = "Dataset_1_Ethan_01062023.csv"
-pln = "Sagittal Plane Right"
+#pln = "Sagittal Plane Right"
 system = "RL - RunLab"
 ################
 
@@ -50,6 +50,13 @@ HEADER = [
     html.H3('A web application for building a movement analysis report.'), 
     html.Hr()]
 
+joint_options = {
+    'Anterior Frontal Plane': ['afLeftThigh', 'afLeftKnee', 'afLeftAnkle', 'afLeftFoot', 'afRightThigh', 'afRightKnee', 'afRightAnkle', 'afRightFoot'],
+    'Sagittal Plane Right': ['RightArm', 'RightHip', 'RightKnee', 'RightAnkle', 'RightToe'],
+    'Sagittal Plane Left': ['LeftArm', 'LeftHip', 'LeftKnee', 'LeftAnkle', 'LeftToe'],
+    'Posterior Frontal Plane': ['pfWaist', 'pfLeftFemurHead', 'pfLeftKnee', 'pfLeftAnkle', 'pfRightFemurHead', 'pfRightKnee', 'pfRightAnkle'],
+}
+
 OPTIONS = dbc.Card(
     [
         html.Div(
@@ -60,17 +67,16 @@ OPTIONS = dbc.Card(
                 dcc.Dropdown(
                     id='plane-radio',
                     options=
-                    ['Anterior Frontal', 'Sagittal Right', 'Sagittal Left', 'Posterior Frontal'],
-                    value='Sagittal Right',
+                    ['Anterior Frontal Plane', 'Sagittal Plane Right', 'Sagittal Plane Left', 'Posterior Frontal Plane'],
+                    value='Sagittal Plane Right',
                     clearable=False,
                     style={'color': 'black'}
                 ),
                 dbc.Label("Joint Selection:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='joint-radio',
-                    options=
-                    ['RightArm', 'RightHip', 'RightKnee', 'RightAnkle', 'RightToe'],
-                    value='RightKnee',
+                    #options= ['RightArm', 'RightHip', 'RightKnee', 'RightAnkle', 'RightToe'],
+                    #value='RightKnee',
                     clearable=False,
                     style={'color': 'black'}
                 ),
@@ -92,40 +98,23 @@ OPTIONS = dbc.Card(
     body=True
 )
 
-#TABLE Operations
-#group list
-gl = slice_df_into_phases(df, pln, system)
-#calculated dataframe
-c_df = calculate_mean_min_max(gl)
-c_df.insert(0, 'Joint Vertex', c_df.index, True)
-c_df = c_df.reset_index(drop=True)
-
-stance_df = gait_section_slicer(c_df, stance=1)
-stance_columns, stance_data = datatable_settings_multiindex(stance_df)
-
-swing_df = gait_section_slicer(c_df, stance=0)
-swing_columns, swing_data = datatable_settings_multiindex(swing_df)
 TABLES = dbc.Container([
     html.Hr(),
     html.H3("Stance: Mean (Minimum/Maximum) for Each Joint"),
     dash_table.DataTable(
-        id='stance_table',
+        id='stance-table',
         style_data={
             'whiteSpace': 'normal',
             'height': 'auto', #Adds wrapping to cells
         },
-        data=stance_data,      
-        columns=stance_columns
     ), 
     html.H3("Swing: Mean (Minimum/Maximum) for Each Joint"),
     dash_table.DataTable(
-        id='swing_table',
+        id='swing-table',
         style_data={
             'whiteSpace': 'normal',
             'height': 'auto', #Adds wrapping to cells
         },
-        data=swing_data,      
-        columns=swing_columns
     ), 
 ])
 
@@ -166,41 +155,74 @@ app.layout = html.Div(
             
             style={"maxWidth": "1150px"} #For A4 style .pdf files, 900px seems to be the max
         ),
-        dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        dbc.Button(children=['Download'],className="mr-1",id='js',n_clicks=0),
-                    ],
-                    align="start"
-                )
-            ],
-            style={"maxWidth": "130px"}
-        ),
+        #The button to download goes here if you need it
+        
     ],
     id='print', 
 )
 
 #Functionality
 @app.callback(
+    Output(component_id='stance-table', component_property='data'),
+    Output(component_id='stance-table', component_property='columns'),
+    Output(component_id='swing-table', component_property='data'),
+    Output(component_id='swing-table', component_property='columns'),
+    Input(component_id='plane-radio', component_property='value'),
+)
+def update_table(plane_radio):
+    plane = plane_radio
+
+    #TABLE Operations
+    #group list
+    gl = slice_df_into_phases(df, plane, system)
+    #calculated dataframe
+    c_df = calculate_mean_min_max(gl)
+    c_df.insert(0, 'Joint Vertex', c_df.index, True)
+    c_df = c_df.reset_index(drop=True)
+
+    stance_df = gait_section_slicer(c_df, stance=1)
+    stance_columns, stance_data = datatable_settings_multiindex(stance_df)
+
+    swing_df = gait_section_slicer(c_df, stance=0)
+    swing_columns, swing_data = datatable_settings_multiindex(swing_df)
+
+    return stance_data, stance_columns, swing_data, swing_columns
+
+@app.callback(
+    Output(component_id='joint-radio', component_property='options'),
+    Input(component_id='plane-radio', component_property='value'),
+)
+def set_joint_options(selected_plane):
+    return [{'label': i, 'value': i} for i in joint_options[selected_plane]]
+
+@app.callback(
+    Output('joint-radio', 'value'),
+    Input('joint-radio', 'options'))
+def set_joint_value(available_options):
+    return available_options[0]['value']
+
+@app.callback(
     Output(component_id='graph', component_property='figure'),
     Input(component_id='joint-radio', component_property='value'),
+    Input(component_id='plane-radio', component_property='value'),
     Input(component_id='phase-highlight', component_property='value'),
 )
-def update_fig(joint_radio, phase_highlight):
+def update_fig(joint_radio, plane_radio, phase_highlight):
     joint = joint_radio
+    pln = plane_radio
     phase = phase_highlight
+    
     #TODO: Most of the following belongs in a seperate function
     gcl = slice_df_gait_cycles(df, pln, system)
     f_df = reindex_to_percent_complete(gcl)
     median = highlight_phase_median(f_df, key=phase)
 
     #Trace of all datapoints
-    trace = go.Scatter(
+    '''trace = go.Scatter(
         name="Data", 
         x=f_df.index, 
         y=f_df.loc[:, (pln, joint)], 
-        mode='lines+markers')
+        mode='lines+markers')'''
 
     '''
     #Polynomial regression in order to model the general waveform of the data
@@ -213,6 +235,7 @@ def update_fig(joint_radio, phase_highlight):
     y = f_df.loc[:, (pln, joint)].to_numpy()[:,np.newaxis]
     y = y[index]#Sort y according to x sorted index
     y = y.reshape(-1, 1) #(n,1)
+    y = np.nan_to_num(y, 0) #handle the case of nan values
 
     #Generate polynomial and interaction features in a matrix
     polynomial_features= PolynomialFeatures(degree=5)
@@ -253,7 +276,7 @@ def update_fig(joint_radio, phase_highlight):
     )
 
     # Display the graph
-    fig = go.Figure(data=[trace, best_fit, upper_ci, lower_ci])
+    fig = go.Figure(data=[best_fit, upper_ci, lower_ci])
     fig.update_layout(
         title="Normal Gait Cycle and Deviation", 
         xaxis_title='Percent to Completion', 
@@ -265,26 +288,39 @@ def update_fig(joint_radio, phase_highlight):
 
     return fig
 
+'''
+dbc.Container(
+            [
+                dbc.Row(
+                    [
+                        dbc.Button(children=['Download'],className="mr-1",id='js',n_clicks=0),
+                    ],
+                    align="start"
+                )
+            ],
+            style={"maxWidth": "130px"}
+        ),
+        
 app.clientside_callback(
     """
-    function(n_clicks){
-        if(n_clicks > 0){
-            var opt = {
-                margin: 0,
-                filename: 'report.pdf',
-                pagebreak: { mode: ['avoid-all'] },
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 1 },
-                jsPDF: { orientation: 'p', unit: 'cm', format: 'a4', precision: 8 }
-            };
-            //the "print" is is used to call the entire layout.
-            html2pdf().from(document.getElementById("print")).set(opt).save();
-        }
-    }
+#    function(n_clicks){
+#        if(n_clicks > 0){
+#            var opt = {
+#                margin: 0,
+#                filename: 'report.pdf',
+#                pagebreak: { mode: ['avoid-all'] },
+#                image: { type: 'jpeg', quality: 0.98 },
+#                html2canvas: { scale: 1 },
+#                jsPDF: { orientation: 'p', unit: 'cm', format: 'a4', precision: 8 }
+#            };
+#            //the "print" is is used to call the entire layout.
+#            html2pdf().from(document.getElementById("print")).set(opt).save();
+#        }
+#    }
     """,
     Output('js','n_clicks'),
     Input('js','n_clicks')
-)
+)'''
 
 if __name__ == '__main__':
     app.run_server(debug=True, use_reloader=True)
