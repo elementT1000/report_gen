@@ -19,20 +19,26 @@ from statsmodels.sandbox.regression.predstd import wls_prediction_std
 
 from gait_slicer import *
 from table_maker import *
+from data_modifications import process_df
 from normalized_gait import highlight_phase_median
+
+import base64
+import io
+
+from dash.exceptions import PreventUpdate
 
 
 ####################################
 #Temp Table Info
 ####################################
-#Constants for graph function
-################
+#TODO: Initialize the page without any data
 csv_name = "Dataset_1_Ethan_01062023.csv"
-#pln = "Sagittal Plane Right"
+#TODO: The current 'slice_df_into_phases()' uses the same system despite the leg. I need to set up a dictionary to switch the system based on the leg selected.
+#For the af and pf planes, I need a toggle to select which leg. For the sagittal planes, I just need to switch it based on which side is collected. 
+#This is important for the tables
 system = "RL - RunLab"
 ################
 
-df = pd.read_csv(csv_name, index_col=0, header=[0,1])
 
 #Dash Application Starts
 app = dash.Dash(__name__,
@@ -63,6 +69,24 @@ OPTIONS = dbc.Card(
             [
                 html.H3("Options", style={"color": "#ffffff"}),
                 html.Hr(),
+
+                dcc.Upload(
+                    id='upload-data',
+                    children=['Upload Movement Data'],
+                    style={
+                        'width': '100%',
+                        'height': '60px',
+                        'lineHeight': '60px',
+                        'borderWidth': '1px',
+                        'borderStyle': 'dashed',
+                        'borderRadius': '5px',
+                        'textAlign': 'center',
+                        'margin': '0px'
+                    },
+                ),
+                dcc.Store(id='store'),
+                html.Div(id='csv-name', style={"color": "#ffffff"}),
+
                 dbc.Label("Body Plane:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='plane-radio',
@@ -70,16 +94,24 @@ OPTIONS = dbc.Card(
                     ['Anterior Frontal Plane', 'Sagittal Plane Right', 'Sagittal Plane Left', 'Posterior Frontal Plane'],
                     value='Sagittal Plane Right',
                     clearable=False,
-                    style={'color': 'black'}
+                    style={
+                        'color': 'black',
+                        'margin': '0px'
+                    }
                 ),
+
                 dbc.Label("Joint Selection:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='joint-radio',
                     #options= ['RightArm', 'RightHip', 'RightKnee', 'RightAnkle', 'RightToe'],
                     #value='RightKnee',
                     clearable=False,
-                    style={'color': 'black'}
+                    style={
+                        'color': 'black',
+                        'margin': '0px'
+                    }
                 ),
+
                 dbc.Label("Phase Highlight:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='phase-highlight',
@@ -88,7 +120,10 @@ OPTIONS = dbc.Card(
                     'Initial Swing', 'Midswing', 'Terminal Swing'],
                     value='None',
                     clearable=False,
-                    style={'color': 'primary'}
+                    style={
+                        'color': 'primary',
+                        'margin': '0px'
+                    }
                 )
             ],
         )
@@ -130,7 +165,7 @@ app.layout = html.Div(
                 dbc.Row(
                     #Here, I need to add in the columns if I want them to be printed
                     [  #May need a card group here if I want to control the height
-                        dbc.Col(OPTIONS, width=2, style={'height': '100%'}),
+                        dbc.Col(OPTIONS, width=3, style={'height': '100%'}),
                         dbc.Col([
                             dcc.Graph(id='graph'),  
                         ], width=9)
@@ -153,7 +188,7 @@ app.layout = html.Div(
                 ),
             ], 
             
-            style={"maxWidth": "1150px"} #For A4 style .pdf files, 900px seems to be the max
+            style={"maxWidth": "1300px"} #For A4 style .pdf files, 900px seems to be the max
         ),
         #The button to download goes here if you need it
         
@@ -162,16 +197,42 @@ app.layout = html.Div(
 )
 
 #Functionality
+#This successfully returns the .csv name, so it looks like it's uploaded b/c store doesnt't throw an error
+@app.callback(
+    Output(component_id='csv-name', component_property='children'),
+    Output('store', 'data'),
+    Input('upload-data', 'contents'),
+    State('upload-data', 'filename')
+)
+def store_data(contents, filename):
+    if contents is None:
+        raise PreventUpdate
+
+    _, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+
+    df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+
+    return filename, df.to_json(date_format='iso', orient='split')
+
 @app.callback(
     Output(component_id='stance-table', component_property='data'),
     Output(component_id='stance-table', component_property='columns'),
     Output(component_id='swing-table', component_property='data'),
     Output(component_id='swing-table', component_property='columns'),
     Input(component_id='plane-radio', component_property='value'),
+    State('store', 'data'),
 )
-def update_table(plane_radio):
+def update_table(plane_radio, upload):
     plane = plane_radio
 
+    if upload is not None:
+        df = process_df(upload)
+    else:
+        df = pd.read_csv(csv_name, index_col=0, header=[0,1])
+        #print("The datatype of the old df is: ")
+        #print(df.iloc[0, 0].dtype)
     #TABLE Operations
     #group list
     gl = slice_df_into_phases(df, plane, system)
@@ -206,8 +267,14 @@ def set_joint_value(available_options):
     Input(component_id='joint-radio', component_property='value'),
     Input(component_id='plane-radio', component_property='value'),
     Input(component_id='phase-highlight', component_property='value'),
+    State('store', 'data'),
 )
-def update_fig(joint_radio, plane_radio, phase_highlight):
+def update_fig(joint_radio, plane_radio, phase_highlight, upload):
+    if upload is not None:
+        df = process_df(upload)
+    else:
+        df = pd.read_csv(csv_name, index_col=0, header=[0,1])
+    
     joint = joint_radio
     pln = plane_radio
     phase = phase_highlight
@@ -280,7 +347,9 @@ def update_fig(joint_radio, plane_radio, phase_highlight):
     fig.update_layout(
         title="Normal Gait Cycle and Deviation", 
         xaxis_title='Percent to Completion', 
-        yaxis_title='Angle')
+        yaxis_title='Angle',
+        showlegend=False
+    )
     #Phase highlight line
     for x in median:
         fig.add_vline(x=x, line_width=2, line_dash="dash", line_color='red')
@@ -323,5 +392,5 @@ app.clientside_callback(
 )'''
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=True, use_reloader=True)
 
