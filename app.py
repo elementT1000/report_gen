@@ -31,13 +31,12 @@ from dash.exceptions import PreventUpdate
 ####################################
 #Temp Table Info
 ####################################
+#TODO: Initialize the page without any data
 csv_name = "Dataset_1_Ethan_01062023.csv"
-#pln = "Sagittal Plane Right"
 #TODO: The current 'slice_df_into_phases()' uses the same system despite the leg. I need to set up a dictionary to switch the system based on the leg selected.
 #For the af and pf planes, I need a toggle to select which leg. For the sagittal planes, I just need to switch it based on which side is collected. 
 #This is important for the tables
 system = "RL - RunLab"
-#df = pd.read_csv(csv_name, index_col=0, header=[0,1])
 ################
 
 
@@ -216,16 +215,6 @@ def store_data(contents, filename):
     df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
 
     return filename, df.to_json(date_format='iso', orient='split')
-
-'''
-@app.callback(
-    Output(component_id='csv-name', component_property='children'),
-    Input('store', 'filename'),
-)
-def update_output(filename):
-    div = "" if filename is None else "Use file " + filename
-    return {'display':'block'} if filename is None else {'display':'none'}, div
-'''
 
 @app.callback(
     Output(component_id='stance-table', component_property='data'),
