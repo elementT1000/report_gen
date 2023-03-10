@@ -20,16 +20,7 @@ from statsmodels.sandbox.regression.predstd import wls_prediction_std
 from gait_slicer import *
 from table_maker import *
 from data_modifications import process_df
-<<<<<<< HEAD
-from normalized_gait import og_phase, filter_pln_n_joint
-
-import base64
-import io
-
-from dash.exceptions import PreventUpdate
-=======
-from normalized_gait import highlight_phase_median
->>>>>>> b84533fe18a223a77f3935db1ba253a92442c7d2
+from graph_functions import og_phase, filter_pln_n_joint
 
 import base64
 import io
@@ -47,7 +38,6 @@ csv_name = "Dataset_1_Ethan_01062023.csv"
 #This is important for the tables
 system = "RL - RunLab"
 ################
-
 
 #Dash Application Starts
 app = dash.Dash(__name__,
@@ -95,7 +85,7 @@ OPTIONS = dbc.Card(
                 ),
                 dcc.Store(id='store'),
                 html.Div(id='csv-name', style={"color": "#ffffff"}),
-
+                
                 dbc.Label("Body Plane:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='plane-radio',
@@ -108,7 +98,6 @@ OPTIONS = dbc.Card(
                         'margin': '0px'
                     }
                 ),
-
                 dbc.Label("Joint Selection:", style={"color": "#ffffff"}),
                 dcc.Dropdown(
                     id='joint-radio',
@@ -304,13 +293,8 @@ def update_fig(joint_radio, plane_radio, phase_highlight, upload):
     # Display the graph
     fig = go.Figure(data=[trace])
     fig.update_layout(
-<<<<<<< HEAD
         title="Angle during Gait Cycle", 
         xaxis_title='Frame', 
-=======
-        title="Normal Gait Cycle and Deviation", 
-        xaxis_title='Percent to Completion', 
->>>>>>> b84533fe18a223a77f3935db1ba253a92442c7d2
         yaxis_title='Angle',
         showlegend=False
     )
@@ -321,39 +305,6 @@ def update_fig(joint_radio, plane_radio, phase_highlight, upload):
 
     return fig
 
-'''
-dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        dbc.Button(children=['Download'],className="mr-1",id='js',n_clicks=0),
-                    ],
-                    align="start"
-                )
-            ],
-            style={"maxWidth": "130px"}
-        ),
-        
-app.clientside_callback(
-    """
-#    function(n_clicks){
-#        if(n_clicks > 0){
-#            var opt = {
-#                margin: 0,
-#                filename: 'report.pdf',
-#                pagebreak: { mode: ['avoid-all'] },
-#                image: { type: 'jpeg', quality: 0.98 },
-#                html2canvas: { scale: 1 },
-#                jsPDF: { orientation: 'p', unit: 'cm', format: 'a4', precision: 8 }
-#            };
-#            //the "print" is is used to call the entire layout.
-#            html2pdf().from(document.getElementById("print")).set(opt).save();
-#        }
-#    }
-    """,
-    Output('js','n_clicks'),
-    Input('js','n_clicks')
-)'''
 
 if __name__ == '__main__':
     app.run_server(debug=True, use_reloader=True)
