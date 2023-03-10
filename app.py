@@ -20,7 +20,16 @@ from statsmodels.sandbox.regression.predstd import wls_prediction_std
 from gait_slicer import *
 from table_maker import *
 from data_modifications import process_df
+<<<<<<< HEAD
 from normalized_gait import og_phase, filter_pln_n_joint
+
+import base64
+import io
+
+from dash.exceptions import PreventUpdate
+=======
+from normalized_gait import highlight_phase_median
+>>>>>>> b84533fe18a223a77f3935db1ba253a92442c7d2
 
 import base64
 import io
@@ -48,7 +57,7 @@ app = dash.Dash(__name__,
         {"name": "viewport", "content": "width=device-width, initial-scale=1"},
     ],
 ) # https://bootswatch.com/lux/
-#server = app.server
+server = app.server
 
 #User Interface
 HEADER = [
@@ -295,8 +304,13 @@ def update_fig(joint_radio, plane_radio, phase_highlight, upload):
     # Display the graph
     fig = go.Figure(data=[trace])
     fig.update_layout(
+<<<<<<< HEAD
         title="Angle during Gait Cycle", 
         xaxis_title='Frame', 
+=======
+        title="Normal Gait Cycle and Deviation", 
+        xaxis_title='Percent to Completion', 
+>>>>>>> b84533fe18a223a77f3935db1ba253a92442c7d2
         yaxis_title='Angle',
         showlegend=False
     )
